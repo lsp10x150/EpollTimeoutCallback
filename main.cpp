@@ -217,24 +217,27 @@ namespace experimental {
     template<typename F, typename ...Args>
     class TimeoutCallback<F(Args...)> : public TimerFd {
         std::function<F(Args...)> callback_;
+        std::tuple<Args...> args;
         int epoll_fd_;
         static int inline number_ = 0;
     public:
         using callback_type = decltype(callback_);
 
-        explicit TimeoutCallback(callback_type f, int epoll_fd, uint64_t timeout_sec = 10)
-                : TimerFd(std::to_string(number_++) + "_timeoutCallback"
+        explicit TimeoutCallback(callback_type f, Args... args, int epoll_fd, uint64_t timeout_sec = 10)
+                : TimerFd(std::to_string(number_++) + typeid(this).name() + "_timeoutCallback"
                 , timeout_sec * 1'000'000'000)
                 , epoll_fd_(epoll_fd)
                 , callback_(f)
+                , args(args...)
         {
             struct epoll_event event = {.events = EPOLLIN | EPOLLOUT,.data = {.ptr = this}};
             epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, getPollFd(), &event);
             rearmTimer();
+
         }
         void processTimeout() override {
             std::cerr << name << ' ';
-            std::invoke(callback_);
+            std::apply(callback_, args);
             disarmTimer();
         }
         ~TimeoutCallback() override {
@@ -250,15 +253,19 @@ void v() {
 
 int main() {
     int epollfd = epoll_create1(0);
-    auto a = experimental::TimeoutCallback<void()>(v, epollfd, 1);
+    int re {};
+    auto a = experimental::TimeoutCallback<void(int, int, int&)>(
+            [](int a, int b, int& c){ c = a+b;}
+            , 2, 1, re, epollfd, 1);
     auto b = experimental::TimeoutCallback<void()>(v, epollfd, 2);
     auto c = experimental::TimeoutCallback<void()>(v, epollfd, 3);
 
     for (int i = 0; i < 3; i++) {
         epoll_event event{};
-        epoll_wait(epollfd, &event, 1, -1);
-        auto b = static_cast<experimental::TimeoutCallback<void()> *>(event.data.ptr);
+        int polled = epoll_wait(epollfd, &event, 1, -1);
+        auto b = static_cast<experimental::TimeoutCallback<void(void)>*>(event.data.ptr);
         b->processTimeout();
     }
+    std::cout << '\n' << re << std::endl;
 }
 
