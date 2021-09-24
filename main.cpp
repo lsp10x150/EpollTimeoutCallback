@@ -210,7 +210,7 @@ void TimerFd::process(uint32_t events) {
     }
 }
 
-namespace hft::experimental {
+namespace experimental {
     template<typename F, typename ...Args>
     class TimeoutCallback;
     //! @brief Class to call registered callback on timeout within epollfd context
@@ -233,6 +233,7 @@ namespace hft::experimental {
             rearmTimer();
         }
         void processTimeout() override {
+            std::cerr << name << ' ';
             std::invoke(callback_);
             disarmTimer();
         }
@@ -243,23 +244,20 @@ namespace hft::experimental {
     };
 }
 #include <sys/epoll.h>
-#include <vector>
-#include <any>
-#include <array>
 void v() {
-    std::cerr << "well it works\n";
+    std::cerr << "works\n";
 }
 
 int main() {
     int epollfd = epoll_create1(0);
-    auto a = hft::experimental::TimeoutCallback<void()>(v, epollfd, 1);
-    auto b = hft::experimental::TimeoutCallback<void()>(v, epollfd, 2);
-    auto c = hft::experimental::TimeoutCallback<void()>(v, epollfd, 3);
+    auto a = experimental::TimeoutCallback<void()>(v, epollfd, 1);
+    auto b = experimental::TimeoutCallback<void()>(v, epollfd, 2);
+    auto c = experimental::TimeoutCallback<void()>(v, epollfd, 3);
 
-    for (int i = 0; i < 10; i++) {
-        epoll_event event {};
+    for (int i = 0; i < 3; i++) {
+        epoll_event event{};
         epoll_wait(epollfd, &event, 1, -1);
-        auto b = static_cast<hft::experimental::TimeoutCallback<void()>*>(event.data.ptr);
+        auto b = static_cast<experimental::TimeoutCallback<void()> *>(event.data.ptr);
         b->processTimeout();
     }
 }
